@@ -1,0 +1,17 @@
+.header {
+  width: 100%;
+  margin: 0;
+  padding: 15px 20px;
+  background-color: #4F6D7A;
+  box-sizing: border-box;
+}
+
+.logo{
+  width: 300px;
+  padding: 0, 5px, 0, 5px;
+  background-color: #166088;
+  color: white;
+  font-family: cursive;
+  font-weight: bold;
+  border-radius: 40px;
+}
