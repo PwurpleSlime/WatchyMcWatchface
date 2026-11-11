@@ -16,6 +16,8 @@
 }
 
 body {
+  position: relative;
+  isolation: isolate;
   margin: 0;
   background: var(--bg);
   color: var(--ink);
@@ -149,6 +151,27 @@ h2 {
   text-align: left;
 }
 
+.tile .availability-banner {
+  inset: 36% auto auto -22%;
+  width: 145%;
+  padding: 6px 0;
+  background: #b3261e;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  transform: rotate(-35deg);
+  text-shadow: 0 1px 2px #0008;
+}
+
+.tile.unavailable {
+  cursor: not-allowed;
+}
+
+.tile.unavailable img {
+  filter: grayscale(0.65);
+}
+
 .detail {
   display: flex;
   gap: 30px;
@@ -243,11 +266,28 @@ h2 {
   bottom: 70px;
   right: 18px;
   width: 260px;
+  max-height: 80vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .drop h3 {
   margin: 0 0 8px;
   font-size: 15px;
+}
+
+#whimsicalSettings {
+  display: none;
+  margin-top: 12px;
+}
+
+[data-theme='whimsical'] #whimsicalSettings {
+  display: block;
+}
+
+#whimsicalSettings h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
 }
 
 .drop label {
@@ -275,6 +315,26 @@ h2 {
   background: none;
 }
 
+.drop label.range-label {
+  margin-bottom: 0;
+}
+
+.drop input[type='range'] {
+  width: 100%;
+  margin: 4px 0 8px;
+  accent-color: var(--logo);
+}
+
+.drop select {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #0006;
+  border-radius: 6px;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+}
+
 .drop button {
   font: inherit;
   margin: 8px 6px 0 0;
@@ -282,7 +342,14 @@ h2 {
   border-radius: 8px;
   border: 1px solid var(--ink);
   background: var(--field);
+  color: var(--ink);
   cursor: pointer;
+}
+
+#cacheStatus {
+  min-height: 1.5em;
+  margin: 6px 0 0;
+  font-size: 12px;
 }
 
 #fab {
@@ -362,86 +429,5 @@ h2 {
 @media (max-width: 620px) {
   .modal {
     grid-template-columns: 1fr;
-  }
-}
-
-[data-theme='whimsical'] {
-  --font: 'Fredoka', system-ui, sans-serif;
-  --logofont: 'Chewy', 'Lilita One', cursive;
-}
-
-[data-theme='whimsical'] body {
-  background: radial-gradient(circle at 20px 20px, #ffffff80 4px, transparent 5px) 0 0/48px 48px,
-    var(--bg);
-  background-position: var(--dot-offset-x, 0px) var(--dot-offset-y, 0px);
-}
-
-[data-theme='whimsical'] header {
-  background: linear-gradient(90deg, var(--header), var(--logo));
-  border-bottom: 5px dotted #fff;
-  border-radius: 0 0 34px 34px;
-}
-
-[data-theme='whimsical'] .logo {
-  transform: rotate(-3deg);
-  border-radius: 40px 18px 40px 18px;
-  box-shadow: 4px 4px 0 #0005;
-  transition: transform 0.25s cubic-bezier(0.3, 1.9, 0.5, 1);
-}
-
-[data-theme='whimsical'] .logo:hover {
-  transform: rotate(3deg) scale(1.08);
-}
-
-[data-theme='whimsical'] .search input {
-  border-radius: 30px;
-  border: 3px solid #fff;
-}
-
-[data-theme='whimsical'] h2 {
-  text-decoration: none;
-  font-size: 22px;
-  font-weight: 600;
-}
-
-[data-theme='whimsical'] .tile {
-  border-radius: 30px 12px 30px 12px;
-  border: 4px solid #fff;
-  box-shadow: 5px 5px 0 #0003;
-  transition: transform 0.25s cubic-bezier(0.3, 1.9, 0.5, 1);
-}
-
-[data-theme='whimsical'] .tile:nth-child(odd) {
-  transform: rotate(-2deg);
-}
-
-[data-theme='whimsical'] .tile:nth-child(even) {
-  transform: rotate(2deg);
-}
-
-[data-theme='whimsical'] .tile:hover {
-  transform: rotate(0) scale(1.1);
-  z-index: 2;
-}
-
-[data-theme='whimsical'] .thumb {
-  border-radius: 40px 14px 40px 14px;
-  border: 5px solid #fff;
-  transform: rotate(3deg);
-}
-
-[data-theme='whimsical'] .drop,
-[data-theme='whimsical'] .modal {
-  border-radius: 26px;
-  border-width: 3px;
-}
-
-[data-theme='whimsical'] .modal .l {
-  border-radius: 24px 0 0 24px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
   }
 }
