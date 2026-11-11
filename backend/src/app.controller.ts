@@ -38,7 +38,8 @@ export class AppController {
   @ApiQuery({
     name: 'name',
     required: true,
-    description: 'Partial item name to search for (at least 3 characters)',
+    description:
+      'Partial item name to search for (at least 3 characters); punctuation differences and minor typos are tolerated',
     example: 'watch',
   })
   @ApiResponse({

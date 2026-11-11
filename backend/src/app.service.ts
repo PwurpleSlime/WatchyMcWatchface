@@ -27,6 +27,7 @@ type Database = {
 export class AppService {
   // Change this placeholder to the name of the Supabase table used by the app.
   private readonly tableName = 'items' as const;
+  private readonly fuzzySearchPageSize = 500;
   private supabaseClient?: SupabaseClient<Database>;
 
   getHello(): string {
@@ -104,11 +105,11 @@ export class AppService {
     name: string,
     returnParameters: string[],
   ): Promise<Record<string, unknown>[]> {
+    const select =
+      returnParameters.length > 0 ? returnParameters.join(',') : '*';
     const { data, error } = await this.supabase
       .from(this.tableName)
-      .select<string, Record<string, unknown>>(
-        returnParameters.length > 0 ? returnParameters.join(',') : '*',
-      )
+      .select<string, Record<string, unknown>>(select)
       .ilike('name', `%${name}%`)
       .limit(returnParameters.length > 0 ? 3 : 1);
 
@@ -117,7 +118,127 @@ export class AppService {
         `Failed to search items: ${error.message}`,
       );
     }
-    return data ?? [];
+
+    if (data?.length) {
+      return data;
+    }
+
+    const normalizedQuery = this.normalizeTitle(name);
+    if (normalizedQuery.length < 3) {
+      return [];
+    }
+
+    const maxDistance = normalizedQuery.length >= 5 ? 2 : 1;
+    const matches: { item: Record<string, unknown>; distance: number }[] = [];
+
+    for (let offset = 0; ; offset += this.fuzzySearchPageSize) {
+      const { data: page, error: pageError } = await this.supabase
+        .from(this.tableName)
+        .select<string, Record<string, unknown>>(select)
+        .range(offset, offset + this.fuzzySearchPageSize - 1);
+
+      if (pageError) {
+        throw new InternalServerErrorException(
+          `Failed to search items: ${pageError.message}`,
+        );
+      }
+
+      for (const item of page ?? []) {
+        const title = this.normalizeTitle(item.name);
+        const distance = this.getTitleDistance(
+          normalizedQuery,
+          title,
+          maxDistance,
+        );
+        if (distance <= maxDistance) {
+          matches.push({ item, distance });
+        }
+      }
+
+      if (!page || page.length < this.fuzzySearchPageSize) {
+        break;
+      }
+    }
+
+    matches.sort((a, b) => a.distance - b.distance);
+    return matches
+      .slice(0, returnParameters.length > 0 ? 3 : 1)
+      .map(({ item }) => item);
+  }
+
+  private normalizeTitle(value: unknown): string {
+    if (typeof value !== 'string') {
+      return '';
+    }
+    return value
+      .normalize('NFKD')
+      .replace(/[^\p{L}\p{N}]/gu, '')
+      .toLowerCase();
+  }
+
+  private getTitleDistance(
+    query: string,
+    title: string,
+    maxDistance: number,
+  ): number {
+    let bestDistance = maxDistance + 1;
+    const minWindowLength = Math.max(1, query.length - maxDistance);
+    const maxWindowLength = query.length + maxDistance;
+
+    for (let start = 0; start < title.length; start += 1) {
+      const remainingLength = title.length - start;
+      const endLimit = Math.min(maxWindowLength, remainingLength);
+      for (let length = minWindowLength; length <= endLimit; length += 1) {
+        const distance = this.getEditDistance(
+          query,
+          title.slice(start, start + length),
+          maxDistance,
+        );
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          if (bestDistance === 0) {
+            return 0;
+          }
+        }
+      }
+    }
+
+    return bestDistance;
+  }
+
+  private getEditDistance(
+    left: string,
+    right: string,
+    maxDistance: number,
+  ): number {
+    const previous = Array.from(
+      { length: right.length + 1 },
+      (_, index) => index,
+    );
+
+    for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+      const current = [leftIndex];
+      let rowMinimum = leftIndex;
+
+      for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+        const cost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+        const distance = Math.min(
+          current[rightIndex - 1] + 1,
+          previous[rightIndex] + 1,
+          previous[rightIndex - 1] + cost,
+        );
+        current.push(distance);
+        rowMinimum = Math.min(rowMinimum, distance);
+      }
+
+      if (rowMinimum > maxDistance) {
+        return maxDistance + 1;
+      }
+
+      previous.splice(0, previous.length, ...current);
+    }
+
+    return previous[right.length];
   }
 
   private get supabase(): SupabaseClient<Database> {
