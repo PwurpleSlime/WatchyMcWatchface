@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WatchyMcWatchFace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Inter:wght@400;500&family=Fredoka:wght@400;600&family=Chewy&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles/styles.css" />
+  </head>
+  <body>
+    <canvas id="dotCanvas" aria-hidden="true"></canvas>
+
+    <header>
+      <button class="logo" id="home" aria-label="Home">WatchyMcWatchFace</button>
+      <button class="linkbtn" id="aboutBtn">About</button>
+      <div class="spacer"></div>
+
+      <button
+        class="icon"
+        id="filterBtn"
+        aria-label="Filter by subscription"
+        title="Filter by subscription"
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M3 6h18M3 12h18M3 18h18" />
+          <circle cx="8" cy="6" r="2.2" fill="var(--header)" />
+          <circle cx="16" cy="12" r="2.2" fill="var(--header)" />
+          <circle cx="10" cy="18" r="2.2" fill="var(--header)" />
+        </svg>
+      </button>
+
+      <form class="search" id="searchForm">
+        <input
+          id="q"
+          type="search"
+          placeholder="Search a movie or show"
+          aria-label="Search"
+          autocomplete="off"
+        />
+        <button class="icon" aria-label="Search">
+          <svg viewBox="0 0 24 24">
+            <circle cx="10.5" cy="10.5" r="6.5" />
+            <path d="M15.5 15.5 21 21" />
+          </svg>
+        </button>
+      </form>
+    </header>
+
+    <div class="drop" id="filters">
+      <h3>My subscriptions</h3>
+      <div id="svcList"></div>
+      <label>
+        Other
+        <input type="text" id="svcOther" placeholder="Add service, press Enter" />
+      </label>
+      <button id="clearF">Clear</button>
+    </div>
+
+    <div class="drop" id="colors">
+      <h3>Live colors</h3>
+      <div id="pickers"></div>
+      <label>
+        Theme
+        <select id="themeSel">
+          <option value="classic">Classic</option>
+          <option value="whimsical">Whimsical</option>
+        </select>
+      </label>
+      <label for="darkMode">
+        Dark mode
+        <input id="darkMode" type="checkbox" />
+      </label>
+      <div id="whimsicalSettings">
+        <h4>Whimsical settings</h4>
+        <label for="gradientAngle" class="range-label">
+          Header gradient angle
+          <output id="gradientAngleValue" for="gradientAngle">90°</output>
+        </label>
+        <input id="gradientAngle" type="range" min="0" max="360" value="90" />
+        <label for="dotColor">
+          Dot color
+          <input id="dotColor" type="color" value="#7b5cff" />
+        </label>
+        <label for="dotMode">Dot movement</label>
+        <select id="dotMode">
+          <option value="attract">Attract to cursor</option>
+          <option value="repel">Repel from cursor</option>
+        </select>
+        <label for="dotStrength" class="range-label">
+          Dot intensity
+          <output id="dotStrengthValue" for="dotStrength">16 px</output>
+        </label>
+        <input id="dotStrength" type="range" min="0" max="40" value="16" />
+      </div>
+      <label>
+        API URL
+        <input type="text" id="apiBase" value="http://localhost:3000" />
+      </label>
+      <button id="clearCache" type="button">Clear saved movie data</button>
+      <p id="cacheStatus" role="status" aria-live="polite"></p>
+      <button id="resetC">Reset colors</button>
+    </div>
+
+    <button id="fab" aria-label="Edit colors and settings" title="Colors and settings">🎨</button>
+
+    <main id="view"></main>
+
+    <div id="about" role="dialog" aria-modal="true" aria-label="About">
+      <div class="modal">
+        <button class="x" id="closeAbout" aria-label="Close">&times;</button>
+
+        <div class="l">
+          <section>
+            <h3>Who Are We</h3>
+            <p>We are just two people who want to help you find your show.</p>
+          </section>
+          <section>
+            <h3>Why We Made This</h3>
+            <p>We made this to help people find any movie or TV show easier to find.</p>
+          </section>
+        </div>
+
+        <div class="r">
+          <section>
+            <h3>What Our Website Does</h3>
+            <p>
+              Users can search for any movie and/or TV show and apply any filters of which
+              subscriptions they have to find it.
+            </p>
+          </section>
+          <section>
+            <h3>How It Works</h3>
+            <p>
+              All you need to do is search a movie or TV show and the results will pop up. You can
+              even filter which subscriptions you have and see if you are able to watch it.
+            </p>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <script src="./scripts/script.js" type="module"></script>
+  </body>
+</html>
