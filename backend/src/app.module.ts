@@ -1,7 +1,13 @@
-import { Module } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { TwoFactorMiddleware } from './two-factor.middleware';
 
 @Module({
   imports: [
@@ -15,4 +21,11 @@ import { AppService } from './app.service';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(TwoFactorMiddleware)
+      .exclude({ path: 'auth/verify-2fa', method: RequestMethod.POST })
+      .forRoutes(AppController);
+  }
+}

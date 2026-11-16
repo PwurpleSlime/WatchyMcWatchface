@@ -6,8 +6,11 @@ import {
   Param,
   Post,
   Query,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiBody,
   ApiOperation,
   ApiParam,
@@ -16,6 +19,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AppService } from './app.service';
+import {
+  getSpeakeasySecret,
+  verifySpeakeasyCode,
+} from './two-factor.middleware';
 
 @Controller()
 @ApiTags('items')
@@ -69,6 +76,44 @@ export class AppController {
     return this.appService.getSearchResult(name);
   }
 
+  @Get('homePageItems')
+  @ApiOperation({
+    summary: 'Get homepage items grouped by genre',
+    description:
+      'Loads item IDs from homePageItems.for_Id and returns each genre with its matching item names and image URLs.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Homepage items grouped by genre',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['genre', 'items'],
+        properties: {
+          genre: { type: 'string', nullable: true },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                imgURL: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Supabase homepage item query failed or is not configured',
+  })
+  getHomePageItems() {
+    return this.appService.getHomePageItems();
+  }
+
   @Get('getItemInformation')
   @ApiOperation({ summary: 'Get all fields for one matching item' })
   @ApiQuery({
@@ -115,8 +160,46 @@ export class AppController {
     return this.appService.getSpecificSearch(name);
   }
 
+  @Post('auth/verify-2fa')
+  @ApiOperation({ summary: 'Verify a Speakeasy two-factor code' })
+  @ApiBody({
+    required: true,
+    schema: {
+      type: 'object',
+      required: ['code'],
+      properties: { code: { type: 'string', example: '123456' } },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'The two-factor code was verified',
+    schema: { type: 'object', properties: { verified: { type: 'boolean' } } },
+  })
+  @ApiResponse({ status: 401, description: 'The code is invalid or expired' })
+  @ApiResponse({
+    status: 503,
+    description: 'Two-factor authentication is not configured',
+  })
+  verifyTwoFactor(@Body('code') code: unknown) {
+    const secret = getSpeakeasySecret();
+    if (!secret) {
+      throw new ServiceUnavailableException(
+        'Two-factor authentication is not configured.',
+      );
+    }
+    if (!verifySpeakeasyCode(code, secret)) {
+      throw new UnauthorizedException('The two-factor code is invalid.');
+    }
+    return { verified: true };
+  }
+
   @Post('items')
-  @ApiOperation({ summary: 'Create an item' })
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Create an item',
+    description:
+      'Enter the current six-digit Speakeasy code as the bearer token.',
+  })
   @ApiBody({
     required: true,
     description:
@@ -149,6 +232,7 @@ export class AppController {
     status: 400,
     description: 'A non-empty item object is required',
   })
+  @ApiResponse({ status: 401, description: 'A valid bearer token is required' })
   @ApiResponse({
     status: 500,
     description: 'Supabase insert failed or is not configured',
@@ -158,7 +242,12 @@ export class AppController {
   }
 
   @Delete('items/:id')
-  @ApiOperation({ summary: 'Delete an item by ID' })
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Delete an item by ID',
+    description:
+      'Enter the current six-digit Speakeasy code as the bearer token.',
+  })
   @ApiParam({
     name: 'id',
     description: 'UUID of the item to delete',
@@ -170,6 +259,7 @@ export class AppController {
     schema: { type: 'object', additionalProperties: true },
   })
   @ApiResponse({ status: 400, description: 'An item ID is required' })
+  @ApiResponse({ status: 401, description: 'A valid bearer token is required' })
   @ApiResponse({ status: 404, description: 'No item was found with this ID' })
   @ApiResponse({
     status: 500,

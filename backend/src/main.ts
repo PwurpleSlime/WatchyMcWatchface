@@ -11,7 +11,10 @@ async function bootstrap() {
     .setTitle('My API Title')
     .setDescription('The API description')
     .setVersion('1.0')
-    .addBearerAuth() 
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'TOTP code' },
+      'bearer',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

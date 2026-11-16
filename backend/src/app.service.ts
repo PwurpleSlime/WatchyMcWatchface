@@ -15,6 +15,12 @@ type Database = {
         Update: Record<string, unknown>;
         Relationships: [];
       };
+      homePageItems: {
+        Row: { for_Id: string; genre: string | null };
+        Insert: { for_Id: string; genre: string | null };
+        Update: { for_Id?: string; genre?: string | null };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -37,6 +43,60 @@ export class AppService {
   async getSearchResult(name: string) {
     this.validateSearchName(name);
     return this.searchDatabase(name.trim(), ['name', 'imgURL']);
+  }
+
+  async getHomePageItems() {
+    const { data: homepageItems, error: homepageItemsError } =
+      await this.supabase.from('homePageItems').select('for_Id,genre');
+
+    if (homepageItemsError) {
+      throw new InternalServerErrorException(
+        `Failed to load homepage items: ${homepageItemsError.message}`,
+      );
+    }
+
+    const itemIds = (homepageItems ?? []).map(({ for_Id }) => for_Id);
+    if (itemIds.length === 0) {
+      return [];
+    }
+
+    const { data: items, error: itemsError } = await this.supabase
+      .from(this.tableName)
+      .select<string, Record<string, unknown>>('id,name,imgURL')
+      .in('id', itemIds);
+
+    if (itemsError) {
+      throw new InternalServerErrorException(
+        `Failed to load homepage item details: ${itemsError.message}`,
+      );
+    }
+
+    const itemsById = new Map<string, Record<string, unknown>>();
+    for (const item of items ?? []) {
+      if (typeof item.id === 'string') {
+        itemsById.set(item.id, item);
+      }
+    }
+    const groups = new Map<
+      unknown,
+      { genre: unknown; items: { name: unknown; imgURL: unknown }[] }
+    >();
+
+    for (const { for_Id, genre } of homepageItems ?? []) {
+      const item = itemsById.get(for_Id);
+      if (!item) {
+        continue;
+      }
+
+      let group = groups.get(genre);
+      if (!group) {
+        group = { genre, items: [] };
+        groups.set(genre, group);
+      }
+      group.items.push({ name: item.name, imgURL: item.imgURL });
+    }
+
+    return [...groups.values()];
   }
 
   async getSpecificSearch(name: string) {
