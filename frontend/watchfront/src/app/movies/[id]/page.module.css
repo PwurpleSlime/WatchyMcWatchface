@@ -144,19 +144,18 @@
   gap: 12px;
 }
 
-.streamingLink {
-  display: inline-block;
+.streamingService {
+  display: block;
   padding: 12px 16px;
   background-color: #166088;
   border-radius: 8px;
   color: white;
   font-size: 15px;
-  text-decoration: none;
-  transition: background-color 0.2s ease;
 }
 
-.streamingLink:hover {
-  background-color: #124b69;
+.streamingService p {
+  margin: 8px 0 0;
+  font-size: 14px;
 }
 
 .message {
