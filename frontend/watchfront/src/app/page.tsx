@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 
+const API_BASE_URL = "https://watchymcwatchface-backend.vercel.app";
+
 const streamingServices = [
   "Netflix",
   "Hulu",
@@ -90,17 +92,127 @@ const categories: MovieCategory[] = [
   },
 ];
 
+// Converts common API response fields into the Movie format used by this page.
+function normalizeMovies(data: unknown): Movie[] {
+  let items: unknown[] = [];
+
+  if (Array.isArray(data)) {
+    items = data;
+  } else if (data && typeof data === "object") {
+    const response = data as Record<string, unknown>;
+
+    if (Array.isArray(response.results)) {
+      items = response.results;
+    } else if (Array.isArray(response.items)) {
+      items = response.items;
+    } else if (Array.isArray(response.data)) {
+      items = response.data;
+    } else if (Array.isArray(response.movies)) {
+      items = response.movies;
+    }
+  }
+
+  return items
+    .filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === "object" && item !== null
+    )
+    .map((item, index) => {
+      const title =
+        item.title ??
+        item.name ??
+        item.original_title ??
+        item.original_name;
+
+      const id = item.id ?? item._id ?? item.imdbID ?? index;
+
+      const poster =
+        item.posterUrl ??
+        item.poster_url ??
+        item.poster ??
+        item.imageUrl ??
+        item.image ??
+        item.thumbnail;
+
+      return {
+        id: String(id),
+        title: typeof title === "string" ? title : "Untitled",
+        posterUrl: typeof poster === "string" ? poster : "/next.svg",
+      };
+    });
+}
+
 export default function Home() {
   const [search, setSearch] = useState("");
-  const [submittedSearch, setSubmittedSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<Movie[]>([]);
   const [showFilter, setShowFilter] = useState(false);
 
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
 
   const [showWelcomePopup, setShowWelcomePopup] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
 
   const filterRef = useRef<HTMLDivElement>(null);
+
+  // Search the API whenever the user types.
+  useEffect(() => {
+    const query = search.trim();
+
+    if (!query) {
+      setSearchResults([]);
+      setIsLoading(false);
+      setSearchError("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const timeout = setTimeout(async () => {
+      setIsLoading(true);
+      setSearchError("");
+
+      try {
+        const url = `${API_BASE_URL}/searchForItem/?name=${encodeURIComponent(
+          query
+        )}`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(
+            `Search failed. Server returned status ${response.status}.`
+          );
+        }
+
+        const data: unknown = await response.json();
+        const movies = normalizeMovies(data);
+
+        if (!cancelled) {
+          setSearchResults(movies);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSearchResults([]);
+          setSearchError(
+            error instanceof Error
+              ? error.message
+              : "Something went wrong while searching."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [search]);
 
   // Show the welcome popup only if the user has not seen it before.
   useEffect(() => {
@@ -131,7 +243,7 @@ export default function Home() {
 
   function handleSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSubmittedSearch(search.trim());
+    // The API search already runs as the user types.
   }
 
   function toggleService(service: string) {
@@ -156,6 +268,16 @@ export default function Home() {
     localStorage.setItem("watchyWelcomeSeen", "true");
     setShowWelcomePopup(false);
   }
+
+  // Keep the existing placeholder categories visible before a search.
+  const filteredCategories = categories
+    .map((category) => ({
+      ...category,
+      movies: category.movies.filter((movie) =>
+        movie.title.toLowerCase().includes(search.trim().toLowerCase())
+      ),
+    }))
+    .filter((category) => category.movies.length > 0);
 
   return (
     <div className={styles.page}>
@@ -249,9 +371,9 @@ export default function Home() {
       </header>
 
       <main className={styles.body}>
-        {(submittedSearch || activeFilters.length > 0) && (
+        {(search.trim() || activeFilters.length > 0) && (
           <p className={styles.searchMessage} role="status">
-            {submittedSearch && <>Search: {submittedSearch} </>}
+            {search.trim() && <>Search: {search.trim()} </>}
 
             {activeFilters.length > 0 && (
               <>Streaming Services: {activeFilters.join(", ")}</>
@@ -259,29 +381,77 @@ export default function Home() {
           </p>
         )}
 
-        {categories.map((category) => (
-          <section className={styles.category} key={category.name}>
-            <h2>{category.name}</h2>
+        {search.trim() ? (
+          <>
+            {isLoading && (
+              <p className={styles.searchMessage} role="status">
+                Searching...
+              </p>
+            )}
 
-            <div className={styles.list}>
-              {category.movies.map((movie) => (
-                <div key={movie.id} className={styles.movieItem}>
-                  <Link
-                    href={`/movies/${movie.id}`}
-                    className={styles.movieLink}
-                    aria-label={`View details for ${movie.title}`}
-                  >
-                    <img
-                      src={movie.posterUrl}
-                      alt={movie.title}
-                      className={styles.moviePoster}
-                    />
-                  </Link>
+            {searchError && !isLoading && (
+              <p className={styles.searchMessage} role="alert">
+                {searchError}
+              </p>
+            )}
+
+            {!isLoading && !searchError && searchResults.length > 0 && (
+              <section className={styles.category}>
+                <h2>Search Results</h2>
+
+                <div className={styles.list}>
+                  {searchResults.map((movie) => (
+                    <div key={movie.id} className={styles.movieItem}>
+                      <Link
+                        href={`/movies/${encodeURIComponent(movie.id)}`}
+                        className={styles.movieLink}
+                        aria-label={`View details for ${movie.title}`}
+                      >
+                        <img
+                          src={movie.posterUrl}
+                          alt={movie.title}
+                          className={styles.moviePoster}
+                        />
+                      </Link>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
-        ))}
+              </section>
+            )}
+
+            {!isLoading &&
+              !searchError &&
+              searchResults.length === 0 && (
+                <p className={styles.searchMessage} role="status">
+                  No movies or TV shows found for &quot;{search}&quot;.
+                </p>
+              )}
+          </>
+        ) : (
+          filteredCategories.map((category) => (
+            <section className={styles.category} key={category.name}>
+              <h2>{category.name}</h2>
+
+              <div className={styles.list}>
+                {category.movies.map((movie) => (
+                  <div key={movie.id} className={styles.movieItem}>
+                    <Link
+                      href={`/movies/${movie.id}`}
+                      className={styles.movieLink}
+                      aria-label={`View details for ${movie.title}`}
+                    >
+                      <img
+                        src={movie.posterUrl}
+                        alt={movie.title}
+                        className={styles.moviePoster}
+                      />
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))
+        )}
       </main>
 
       {showWelcomePopup && (
