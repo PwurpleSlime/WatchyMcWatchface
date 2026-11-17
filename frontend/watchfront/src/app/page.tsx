@@ -22,6 +22,7 @@ type Movie = {
   id: string;
   title: string;
   posterUrl: string;
+  streamingServices: string[];
 };
 
 type MovieCategory = {
@@ -37,16 +38,19 @@ const categories: MovieCategory[] = [
         id: "example-movie",
         title: "Example Movie",
         posterUrl: "/next.svg",
+        streamingServices: ["Netflix", "Hulu"],
       },
       {
         id: "action-movie-2",
         title: "Action Movie 2",
         posterUrl: "/vercel.svg",
+        streamingServices: ["Disney+", "HBO Max"],
       },
       {
         id: "action-movie-3",
         title: "Action Movie 3",
         posterUrl: "/window.svg",
+        streamingServices: ["Amazon Prime Video", "Peacock"],
       },
     ],
   },
@@ -57,16 +61,19 @@ const categories: MovieCategory[] = [
         id: "scifi-movie-1",
         title: "Science Fiction Movie 1",
         posterUrl: "/globe.svg",
+        streamingServices: ["Paramount+", "Apple TV+"],
       },
       {
         id: "scifi-movie-2",
         title: "Science Fiction Movie 2",
         posterUrl: "/file.svg",
+        streamingServices: ["Netflix", "Disney+"],
       },
       {
         id: "scifi-movie-3",
         title: "Science Fiction Movie 3",
         posterUrl: "/next.svg",
+        streamingServices: ["Hulu", "HBO Max"],
       },
     ],
   },
@@ -77,16 +84,19 @@ const categories: MovieCategory[] = [
         id: "comedy-movie-1",
         title: "Comedy Movie 1",
         posterUrl: "/vercel.svg",
+        streamingServices: ["Amazon Prime Video", "Peacock"],
       },
       {
         id: "comedy-movie-2",
         title: "Comedy Movie 2",
         posterUrl: "/globe.svg",
+        streamingServices: ["Paramount+", "Netflix"],
       },
       {
         id: "comedy-movie-3",
         title: "Comedy Movie 3",
         posterUrl: "/window.svg",
+        streamingServices: ["Apple TV+", "Hulu"],
       },
     ],
   },
@@ -134,10 +144,35 @@ function normalizeMovies(data: unknown): Movie[] {
         item.image ??
         item.thumbnail;
 
+      const services =
+        item.streamingServices ??
+        item.streaming_services ??
+        item.streamingLinks ??
+        item.streaming_links ??
+        item.providers ??
+        item.services;
+
       return {
         id: String(id),
         title: typeof title === "string" ? title : "Untitled",
         posterUrl: typeof poster === "string" ? poster : "/next.svg",
+        streamingServices: Array.isArray(services)
+          ? services
+              .map((service) => {
+                if (typeof service === "string") {
+                  return service;
+                }
+
+                if (service && typeof service === "object") {
+                  const record = service as Record<string, unknown>;
+                  const name = record.name ?? record.provider ?? record.service;
+                  return typeof name === "string" ? name : "";
+                }
+
+                return "";
+              })
+              .filter(Boolean)
+          : [],
       };
     });
 }
@@ -274,10 +309,22 @@ export default function Home() {
     .map((category) => ({
       ...category,
       movies: category.movies.filter((movie) =>
-        movie.title.toLowerCase().includes(search.trim().toLowerCase())
+        movie.title.toLowerCase().includes(search.trim().toLowerCase()) &&
+        (activeFilters.length === 0 ||
+          activeFilters.some((service) =>
+            movie.streamingServices.includes(service)
+          ))
       ),
     }))
     .filter((category) => category.movies.length > 0);
+
+  const filteredSearchResults = searchResults.filter(
+    (movie) =>
+      activeFilters.length === 0 ||
+      activeFilters.some((service) =>
+        movie.streamingServices.includes(service)
+      )
+  );
 
   return (
     <div className={styles.page}>
@@ -337,12 +384,24 @@ export default function Home() {
           <form className={styles.searchForm} onSubmit={handleSearch}>
             <input
               className={styles.searchInput}
-              type="search"
+              type="text"
               placeholder="Search"
               aria-label="Search movies and TV shows"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+
+            {search && (
+              <button
+                type="button"
+                className={styles.clearSearchButton}
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                title="Clear search"
+              >
+                ×
+              </button>
+            )}
 
             <button
               type="submit"
@@ -395,12 +454,12 @@ export default function Home() {
               </p>
             )}
 
-            {!isLoading && !searchError && searchResults.length > 0 && (
+            {!isLoading && !searchError && filteredSearchResults.length > 0 && (
               <section className={styles.category}>
                 <h2>Search Results</h2>
 
                 <div className={styles.list}>
-                  {searchResults.map((movie) => (
+                  {filteredSearchResults.map((movie) => (
                     <div key={movie.id} className={styles.movieItem}>
                       <Link
                         href={`/movies/${encodeURIComponent(movie.id)}`}
@@ -421,36 +480,46 @@ export default function Home() {
 
             {!isLoading &&
               !searchError &&
-              searchResults.length === 0 && (
+              filteredSearchResults.length === 0 && (
                 <p className={styles.searchMessage} role="status">
-                  No movies or TV shows found for &quot;{search}&quot;.
+                  {searchResults.length > 0 && activeFilters.length > 0
+                    ? "No search results match the selected streaming services."
+                    : `No movies or TV shows found for "${search}".`}
                 </p>
               )}
           </>
         ) : (
-          filteredCategories.map((category) => (
-            <section className={styles.category} key={category.name}>
-              <h2>{category.name}</h2>
+          <>
+            {filteredCategories.map((category) => (
+              <section className={styles.category} key={category.name}>
+                <h2>{category.name}</h2>
 
-              <div className={styles.list}>
-                {category.movies.map((movie) => (
-                  <div key={movie.id} className={styles.movieItem}>
-                    <Link
-                      href={`/movies/${movie.id}`}
-                      className={styles.movieLink}
-                      aria-label={`View details for ${movie.title}`}
-                    >
-                      <img
-                        src={movie.posterUrl}
-                        alt={movie.title}
-                        className={styles.moviePoster}
-                      />
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))
+                <div className={styles.list}>
+                  {category.movies.map((movie) => (
+                    <div key={movie.id} className={styles.movieItem}>
+                      <Link
+                        href={`/movies/${movie.id}`}
+                        className={styles.movieLink}
+                        aria-label={`View details for ${movie.title}`}
+                      >
+                        <img
+                          src={movie.posterUrl}
+                          alt={movie.title}
+                          className={styles.moviePoster}
+                        />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+
+            {activeFilters.length > 0 && filteredCategories.length === 0 && (
+              <p className={styles.searchMessage} role="status">
+                No movies match the selected streaming services.
+              </p>
+            )}
+          </>
         )}
       </main>
 
