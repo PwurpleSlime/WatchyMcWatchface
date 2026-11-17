@@ -200,6 +200,27 @@
   cursor: pointer;
 }
 
+.clearSearchButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  min-height: 44px;
+  padding: 0;
+  border: 2px solid #166088;
+  border-right: none;
+  background: #fff;
+  color: #000;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.clearSearchButton:hover {
+  background: #eee;
+}
+
 .searchButton:hover {
   background: #104b69;
 }
@@ -228,7 +249,7 @@
 
 .category h2 {
   margin: 0 0 18px;
-  color: #fff;
+  color: #000;
   font-size: 28px;
   font-weight: 600;
 }
@@ -261,10 +282,15 @@
   border-radius: 8px;
   outline-offset: 4px;
   background: transparent;
+  color: #000;
   text-decoration: none;
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease;
+}
+
+.movieLink:visited {
+  color: #000;
 }
 
 .movieLink:hover {
