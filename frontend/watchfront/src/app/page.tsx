@@ -1,8 +1,9 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { normalizeImageURL } from "../lib/image-url";
 import styles from "./page.module.css";
 
 const API_BASE_URL = "https://watchymcwatchface-backend.vercel.app";
@@ -20,443 +21,509 @@ const streamingServices = [
 
 type Movie = {
   id: string;
-  title: string;
-  posterUrl: string;
-};
-
-type MovieCategory = {
   name: string;
-  movies: Movie[];
+  imgURL: string;
+  genre: string;
+  services: string[];
 };
 
-const categories: MovieCategory[] = [
-  {
-    name: "Action",
-    movies: [
-      {
-        id: "example-movie",
-        title: "Example Movie",
-        posterUrl: "/next.svg",
-      },
-      {
-        id: "action-movie-2",
-        title: "Action Movie 2",
-        posterUrl: "/vercel.svg",
-      },
-      {
-        id: "action-movie-3",
-        title: "Action Movie 3",
-        posterUrl: "/window.svg",
-      },
-    ],
-  },
-  {
-    name: "Science Fiction",
-    movies: [
-      {
-        id: "scifi-movie-1",
-        title: "Science Fiction Movie 1",
-        posterUrl: "/globe.svg",
-      },
-      {
-        id: "scifi-movie-2",
-        title: "Science Fiction Movie 2",
-        posterUrl: "/file.svg",
-      },
-      {
-        id: "scifi-movie-3",
-        title: "Science Fiction Movie 3",
-        posterUrl: "/next.svg",
-      },
-    ],
-  },
-  {
-    name: "Comedy",
-    movies: [
-      {
-        id: "comedy-movie-1",
-        title: "Comedy Movie 1",
-        posterUrl: "/vercel.svg",
-      },
-      {
-        id: "comedy-movie-2",
-        title: "Comedy Movie 2",
-        posterUrl: "/globe.svg",
-      },
-      {
-        id: "comedy-movie-3",
-        title: "Comedy Movie 3",
-        posterUrl: "/window.svg",
-      },
-    ],
-  },
-];
+type HomeCategory = {
+  genre: string;
+  items: Movie[];
+};
 
-// Converts common API response fields into the Movie format used by this page.
-function normalizeMovies(data: unknown): Movie[] {
-  let items: unknown[] = [];
+function normalizeMovie(
+  item: any,
+  genre = "",
+  index = 0
+): Movie {
+  return {
+    id: String(
+      item.id ?? item._id ?? `${genre}-${item.name ?? "movie"}-${index}`
+    ),
+    name: String(item.name ?? item.title ?? ""),
+    imgURL: normalizeImageURL(item.imgURL),
+    genre: String(item.genre ?? genre),
+    services: Array.isArray(item.services)
+      ? item.services.map(String)
+      : typeof item.services === "string"
+        ? item.services.split(",").map((service: string) => service.trim())
+        : [],
+  };
+}
 
-  if (Array.isArray(data)) {
-    items = data;
-  } else if (data && typeof data === "object") {
-    const response = data as Record<string, unknown>;
-
-    if (Array.isArray(response.results)) {
-      items = response.results;
-    } else if (Array.isArray(response.items)) {
-      items = response.items;
-    } else if (Array.isArray(response.data)) {
-      items = response.data;
-    } else if (Array.isArray(response.movies)) {
-      items = response.movies;
-    }
+function normalizeHomeCategories(data: any): HomeCategory[] {
+  if (!Array.isArray(data)) {
+    return [];
   }
 
-  return items
+  return data
     .filter(
-      (item): item is Record<string, unknown> =>
-        typeof item === "object" && item !== null
+      (category: any) =>
+        category &&
+        typeof category.genre === "string" &&
+        Array.isArray(category.items)
     )
-    .map((item, index) => {
-      const title =
-        item.title ??
-        item.name ??
-        item.original_title ??
-        item.original_name;
+    .map((category: any, categoryIndex: number) => ({
+      genre: category.genre,
+      items: category.items
+        .filter((item: any) => item && typeof item === "object")
+        .map((item: any, index: number) =>
+          normalizeMovie(
+            item,
+            category.genre,
+            categoryIndex * 1000 + index
+          )
+        )
+        .filter((movie: Movie) => movie.name !== ""),
+    }));
+}
 
-      const id = item.id ?? item._id ?? item.imdbID ?? index;
+function normalizeSearchResults(data: any): Movie[] {
+  const records = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.results)
+      ? data.results
+      : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.movies)
+            ? data.movies
+            : [];
 
-      const poster =
-        item.posterUrl ??
-        item.poster_url ??
-        item.poster ??
-        item.imageUrl ??
-        item.image ??
-        item.thumbnail;
-
-      return {
-        id: String(id),
-        title: typeof title === "string" ? title : "Untitled",
-        posterUrl: typeof poster === "string" ? poster : "/next.svg",
-      };
-    });
+  return records
+    .filter((item: any) => item && typeof item === "object")
+    .map((item: any, index: number) =>
+      normalizeMovie(item, "", index)
+    )
+    .filter((movie: Movie) => movie.name !== "");
 }
 
 export default function Home() {
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Movie[]>([]);
-  const [showFilter, setShowFilter] = useState(false);
+  const [homeCategories, setHomeCategories] = useState<HomeCategory[]>([]);
 
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [appliedServices, setAppliedServices] = useState<string[]>([]);
 
-  const [showWelcomePopup, setShowWelcomePopup] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+
+  const [loadingHome, setLoadingHome] = useState(true);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+
+  const [homeError, setHomeError] = useState("");
   const [searchError, setSearchError] = useState("");
 
-  const filterRef = useRef<HTMLDivElement>(null);
+  const query = search.trim();
+  const hasSearch = query.length >= 3;
 
-  // Search the API whenever the user types.
+  // Load Action and Comedy categories from the backend.
   useEffect(() => {
-    const query = search.trim();
+    const controller = new AbortController();
 
-    if (!query) {
-      setSearchResults([]);
-      setIsLoading(false);
-      setSearchError("");
-      return;
-    }
-
-    let cancelled = false;
-
-    const timeout = setTimeout(async () => {
-      setIsLoading(true);
-      setSearchError("");
+    async function loadHomeMovies() {
+      setLoadingHome(true);
+      setHomeError("");
 
       try {
-        const url = `${API_BASE_URL}/searchForItem/?name=${encodeURIComponent(
-          query
-        )}`;
-
-        const response = await fetch(url);
+        const response = await fetch(
+          `${API_BASE_URL}/homePageItems`,
+          {
+            signal: controller.signal,
+            cache: "no-store",
+          }
+        );
 
         if (!response.ok) {
           throw new Error(
-            `Search failed. Server returned status ${response.status}.`
+            `Could not load homepage movies (${response.status}).`
           );
         }
 
-        const data: unknown = await response.json();
-        const movies = normalizeMovies(data);
+        const data = await response.json();
 
-        if (!cancelled) {
-          setSearchResults(movies);
+        console.log("Homepage API response:", data);
+
+        const categories = normalizeHomeCategories(data);
+
+        console.log("Normalized homepage categories:", categories);
+
+        setHomeCategories(categories);
+
+        if (categories.length === 0) {
+          setHomeError(
+            "No homepage categories were returned in the expected format."
+          );
         }
       } catch (error) {
-        if (!cancelled) {
-          setSearchResults([]);
-          setSearchError(
-            error instanceof Error
-              ? error.message
-              : "Something went wrong while searching."
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+
+        console.error("Error loading homepage movies:", error);
+
+        setHomeError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load homepage movies."
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingHome(false);
+        }
+      }
+    }
+
+    loadHomeMovies();
+
+    return () => controller.abort();
+  }, []);
+
+  // Show the welcome popup only on the first visit.
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem("watchyWelcomeSeen")) {
+        setWelcomeOpen(true);
+      }
+    } catch (error) {
+      console.error("Could not check welcome popup setting:", error);
+    }
+  }, []);
+
+  function closeWelcomePopup() {
+    setWelcomeOpen(false);
+
+    try {
+      localStorage.setItem("watchyWelcomeSeen", "true");
+    } catch (error) {
+      console.error("Could not save welcome popup setting:", error);
+    }
+  }
+
+  // Search the backend after the user stops typing for 300 milliseconds.
+  useEffect(() => {
+    if (!hasSearch) {
+      setSearchResults([]);
+      setSearchError("");
+      setLoadingSearch(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const timeout = setTimeout(async () => {
+      setLoadingSearch(true);
+      setSearchError("");
+
+      try {
+        const url =
+          `${API_BASE_URL}/searchForItem/?name=` +
+          encodeURIComponent(query);
+
+        console.log("Searching API:", url);
+
+        const response = await fetch(url, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+
+        const data = await response.json();
+
+        console.log("Raw search API response:", data);
+
+        if (!response.ok) {
+          throw new Error(
+            data?.message ??
+              `Search failed with status ${response.status}.`
           );
         }
+
+        const movies = normalizeSearchResults(data);
+
+        console.log("Normalized search results:", movies);
+
+        setSearchResults(movies);
+
+        if (movies.length === 0) {
+          setSearchError(
+            "No results found. Try another movie or TV show."
+          );
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+
+        console.error("Movie search error:", error);
+
+        setSearchResults([]);
+
+        setSearchError(
+          error instanceof Error
+            ? error.message
+            : "Something went wrong while searching."
+        );
       } finally {
-        if (!cancelled) {
-          setIsLoading(false);
+        if (!controller.signal.aborted) {
+          setLoadingSearch(false);
         }
       }
     }, 300);
 
     return () => {
-      cancelled = true;
       clearTimeout(timeout);
+      controller.abort();
     };
-  }, [search]);
-
-  // Show the welcome popup only if the user has not seen it before.
-  useEffect(() => {
-    const hasSeenWelcome = localStorage.getItem("watchyWelcomeSeen");
-
-    if (!hasSeenWelcome) {
-      setShowWelcomePopup(true);
-    }
-  }, []);
-
-  // Close the streaming service filter when clicking outside it.
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        filterRef.current &&
-        !filterRef.current.contains(event.target as Node)
-      ) {
-        setShowFilter(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
-
-  function handleSearch(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    // The API search already runs as the user types.
-  }
+  }, [query, hasSearch]);
 
   function toggleService(service: string) {
-    setSelectedServices((previous) =>
-      previous.includes(service)
-        ? previous.filter((item) => item !== service)
-        : [...previous, service]
+    setSelectedServices((current) =>
+      current.includes(service)
+        ? current.filter((item) => item !== service)
+        : [...current, service]
     );
   }
 
-  function applyFilter() {
-    setActiveFilters([...selectedServices]);
-    setShowFilter(false);
+  function applyFilters() {
+    setAppliedServices(selectedServices);
+    setFilterOpen(false);
   }
 
   function clearFilters() {
     setSelectedServices([]);
-    setActiveFilters([]);
+    setAppliedServices([]);
   }
 
-  function closeWelcomePopup() {
-    localStorage.setItem("watchyWelcomeSeen", "true");
-    setShowWelcomePopup(false);
+  function matchesServices(movie: Movie) {
+    if (appliedServices.length === 0) {
+      return true;
+    }
+
+    return appliedServices.some((selected) =>
+      movie.services.some(
+        (service) => service.toLowerCase() === selected.toLowerCase()
+      )
+    );
   }
 
-  // Keep the existing placeholder categories visible before a search.
-  const filteredCategories = categories
-    .map((category) => ({
-      ...category,
-      movies: category.movies.filter((movie) =>
-        movie.title.toLowerCase().includes(search.trim().toLowerCase())
-      ),
-    }))
-    .filter((category) => category.movies.length > 0);
+  // Render posters directly from the online imgURL field.
+  function renderMovie(movie: Movie) {
+    return (
+      <div className={styles.movieItem} key={movie.id}>
+        <Link
+          href={`/movies/${encodeURIComponent(movie.id)}?name=${encodeURIComponent(
+            movie.name
+          )}`}
+          className={styles.movieLink}
+          title={movie.name}
+        >
+          {movie.imgURL ? (
+            <img
+              src={movie.imgURL}
+              alt={`${movie.name} poster`}
+              className={styles.moviePoster}
+              loading="lazy"
+              onError={(event) => {
+                console.error(
+                  `Could not load image for "${movie.name}":`,
+                  movie.imgURL
+                );
+              }}
+            />
+          ) : (
+            <div className={styles.moviePoster}>
+              Image unavailable
+            </div>
+          )}
+
+          <p>{movie.name}</p>
+        </Link>
+      </div>
+    );
+  }
+
+  function renderCategory(category: HomeCategory) {
+    const visibleMovies = category.items.filter(matchesServices);
+
+    return (
+      <section className={styles.category} key={category.genre}>
+        <h2>{category.genre}</h2>
+
+        {visibleMovies.length > 0 ? (
+          <div className={styles.list}>
+            {visibleMovies.map(renderMovie)}
+          </div>
+        ) : (
+          <p>
+            {loadingHome
+              ? "Loading movies..."
+              : appliedServices.length > 0
+                ? "No movies in this category match your selected services."
+                : `No movies found in ${category.genre}.`}
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  const visibleSearchResults = searchResults.filter(matchesServices);
+
+  const actionCategory = homeCategories.find(
+    (category) => category.genre.trim().toLowerCase() === "action"
+  );
+
+  const comedyCategory = homeCategories.find(
+    (category) => category.genre.trim().toLowerCase() === "comedy"
+  );
+
+  const displayedHomeCategories = [
+    actionCategory,
+    comedyCategory,
+  ].filter((category): category is HomeCategory => Boolean(category));
 
   return (
-    <div className={styles.page}>
+    <main className={styles.page}>
       <header className={styles.header}>
         <div className={styles.logo}>
           <h1>WatchyMcWatchFace</h1>
         </div>
 
-        <div className={styles.search}>
-          <div className={styles.filter} ref={filterRef}>
-            <button
-              type="button"
-              className={styles.filterButton}
-              onClick={() => setShowFilter((previous) => !previous)}
-              aria-expanded={showFilter}
-              aria-haspopup="true"
-            >
-              Filter <span className={styles.arrow}>▾</span>
-            </button>
+        <form
+          className={styles.searchForm}
+          onSubmit={(event) => event.preventDefault()}
+        >
+          <input
+            type="search"
+            className={styles.searchInput}
+            placeholder="Search movies and TV shows..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            aria-label="Search movies and TV shows"
+          />
 
-            {showFilter && (
-              <div className={styles.filterPopup}>
-                <h3>Select Your Streaming Services</h3>
+          <button type="submit" className={styles.searchButton}>
+            Search
+          </button>
+        </form>
 
-                <div className={styles.filterOptions}>
-                  {streamingServices.map((service) => (
-                    <label key={service} className={styles.filterOption}>
-                      <input
-                        type="checkbox"
-                        checked={selectedServices.includes(service)}
-                        onChange={() => toggleService(service)}
-                      />
-                      <span>{service}</span>
-                    </label>
-                  ))}
-                </div>
+        <div className={styles.filter}>
+          <button
+            type="button"
+            className={styles.filterButton}
+            onClick={() => setFilterOpen((open) => !open)}
+            aria-expanded={filterOpen}
+          >
+            Streaming Services
+            <span className={styles.arrow}>
+              {filterOpen ? "▲" : "▼"}
+            </span>
+          </button>
 
-                <button
-                  type="button"
-                  className={styles.applyFilter}
-                  onClick={applyFilter}
-                >
-                  Apply Filters
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.clearFilter}
-                  onClick={clearFilters}
-                >
-                  Clear All Filters
-                </button>
+          {filterOpen && (
+            <div className={styles.filterPopup}>
+              <div className={styles.filterOptions}>
+                {streamingServices.map((service) => (
+                  <label
+                    className={styles.filterOption}
+                    key={service}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedServices.includes(service)}
+                      onChange={() => toggleService(service)}
+                    />
+                    {service}
+                  </label>
+                ))}
               </div>
-            )}
-          </div>
 
-          <form className={styles.searchForm} onSubmit={handleSearch}>
-            <input
-              className={styles.searchInput}
-              type="search"
-              placeholder="Search"
-              aria-label="Search movies and TV shows"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-
-            <button
-              type="submit"
-              className={styles.searchButton}
-              aria-label="Search"
-              title="Search"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+              <button
+                type="button"
+                className={styles.applyFilter}
+                onClick={applyFilters}
               >
-                <circle cx="11" cy="11" r="7" />
-                <path d="m20 20-4-4" />
-              </svg>
-            </button>
-          </form>
+                Apply Filters
+              </button>
+
+              <button
+                type="button"
+                className={styles.clearFilter}
+                onClick={clearFilters}
+              >
+                Clear Filters
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
-      <main className={styles.body}>
-        {(search.trim() || activeFilters.length > 0) && (
-          <p className={styles.searchMessage} role="status">
-            {search.trim() && <>Search: {search.trim()} </>}
-
-            {activeFilters.length > 0 && (
-              <>Streaming Services: {activeFilters.join(", ")}</>
-            )}
+      <div className={styles.body}>
+        {appliedServices.length > 0 && (
+          <p className={styles.searchMessage}>
+            Filtering by: {appliedServices.join(", ")}
           </p>
         )}
 
-        {search.trim() ? (
-          <>
-            {isLoading && (
-              <p className={styles.searchMessage} role="status">
-                Searching...
+        {hasSearch ? (
+          <section className={styles.category}>
+            <h2>Search Results</h2>
+
+            {loadingSearch && (
+              <p className={styles.searchMessage}>
+                Searching for movies and TV shows...
               </p>
             )}
 
-            {searchError && !isLoading && (
-              <p className={styles.searchMessage} role="alert">
-                {searchError}
-              </p>
+            {!loadingSearch && searchError && (
+              <p className={styles.searchMessage}>{searchError}</p>
             )}
 
-            {!isLoading && !searchError && searchResults.length > 0 && (
-              <section className={styles.category}>
-                <h2>Search Results</h2>
-
-                <div className={styles.list}>
-                  {searchResults.map((movie) => (
-                    <div key={movie.id} className={styles.movieItem}>
-                      <Link
-                        href={`/movies/${encodeURIComponent(movie.id)}`}
-                        className={styles.movieLink}
-                        aria-label={`View details for ${movie.title}`}
-                      >
-                        <img
-                          src={movie.posterUrl}
-                          alt={movie.title}
-                          className={styles.moviePoster}
-                        />
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {!isLoading &&
+            {!loadingSearch &&
               !searchError &&
-              searchResults.length === 0 && (
-                <p className={styles.searchMessage} role="status">
-                  No movies or TV shows found for &quot;{search}&quot;.
+              visibleSearchResults.length === 0 && (
+                <p className={styles.searchMessage}>
+                  No results match your selected streaming services.
+                </p>
+              )}
+
+            {visibleSearchResults.length > 0 && (
+              <div className={styles.list}>
+                {visibleSearchResults.map(renderMovie)}
+              </div>
+            )}
+          </section>
+        ) : (
+          <>
+            {homeError && (
+              <p className={styles.searchMessage}>{homeError}</p>
+            )}
+
+            {loadingHome && homeCategories.length === 0 && (
+              <p className={styles.searchMessage}>
+                Loading homepage movies...
+              </p>
+            )}
+
+            {displayedHomeCategories.map(renderCategory)}
+
+            {!loadingHome &&
+              !homeError &&
+              displayedHomeCategories.length === 0 && (
+                <p className={styles.searchMessage}>
+                  The API did not return Action and Comedy categories.
+                  Check the genre values in the API response.
                 </p>
               )}
           </>
-        ) : (
-          filteredCategories.map((category) => (
-            <section className={styles.category} key={category.name}>
-              <h2>{category.name}</h2>
-
-              <div className={styles.list}>
-                {category.movies.map((movie) => (
-                  <div key={movie.id} className={styles.movieItem}>
-                    <Link
-                      href={`/movies/${movie.id}`}
-                      className={styles.movieLink}
-                      aria-label={`View details for ${movie.title}`}
-                    >
-                      <img
-                        src={movie.posterUrl}
-                        alt={movie.title}
-                        className={styles.moviePoster}
-                      />
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))
         )}
-      </main>
+      </div>
 
-      {showWelcomePopup && (
+      {welcomeOpen && (
         <div className={styles.popupOverlay}>
-          <section
+          <div
             className={styles.welcomePopup}
             role="dialog"
             aria-modal="true"
@@ -472,46 +539,57 @@ export default function Home() {
             </button>
 
             <div className={styles.popupLeft}>
-              <section className={styles.popupLeftSection}>
-                <h2 id="welcome-title">Who Are We</h2>
-                <p>
-                  We are just two people who want to help you
-                  find your show.
-                </p>
-              </section>
+              <h2 id="welcome-title">
+                Welcome to WatchyMcWatchFace!
+              </h2>
 
-              <section className={styles.popupLeftSection}>
-                <h2>Why We Made This</h2>
+              <div className={styles.popupLeftSection}>
+                <h3>Who Are We</h3>
                 <p>
-                  We made this to help people find any movie
-                  or TV show easier to find.
+                  We are just two people who want to help you find
+                  your show.
                 </p>
-              </section>
+              </div>
+
+              <div className={styles.popupLeftSection}>
+                <h3>Why We Made This</h3>
+                <p>
+                  We made this to help people find any movie or TV
+                  show easier to find.
+                </p>
+              </div>
             </div>
 
             <div className={styles.popupRight}>
-              <section className={styles.popupRightSection}>
-                <h2>What Our Website Does</h2>
+              <div className={styles.popupRightSection}>
+                <h3>What Our Website Does</h3>
                 <p>
-                  Users can search for any movie and/or TV show
-                  and apply any filters of which subscriptions
-                  they have to find it.
+                  Users can search for any movie and/or TV show and
+                  apply filters for their subscriptions to find out
+                  what they can watch.
                 </p>
-              </section>
+              </div>
 
-              <section className={styles.popupRightSection}>
-                <h2>How It Works</h2>
+              <div className={styles.popupRightSection}>
+                <h3>How It Works</h3>
                 <p>
-                  All you need to do is search a movie or TV show
-                  and the results will pop up. You can even filter
-                  which subscriptions you have and see if you are
-                  able to watch it.
+                  Search for a movie or TV show and the results will
+                  appear. You can also filter by your streaming
+                  subscriptions.
                 </p>
-              </section>
+              </div>
+
+              <button
+                type="button"
+                className={styles.applyFilter}
+                onClick={closeWelcomePopup}
+              >
+                Get Started
+              </button>
             </div>
-          </section>
+          </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
