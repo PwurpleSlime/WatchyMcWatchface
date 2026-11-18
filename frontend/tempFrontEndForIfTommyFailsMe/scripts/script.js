@@ -1,13 +1,13 @@
 // ISSUE: Native live-color picker prompts reopen when selecting the same option instead of closing.
 import { getApiBase, getItemInformation, searchForItem, clearApiCache } from './api.js';
 import { initializeCustomization } from './customization.js';
+import { initializeFilterMenu, matchesServiceFilter } from './filter.js';
+import { shouldShowAboutPopup } from './storage.js';
 
 const $ = (selector) => document.querySelector(selector);
 const view = $('#view');
-const root = document.documentElement;
 const dog = (id, width = 300, height = 300) =>
   `https://placedog.net/${width}/${height}?id=${id}`;
-const ABOUT_SHOWN_KEY = 'watchymcwatchface:about-shown';
 
 const toggle = (selector, force) => {
   const panel = $(selector);
@@ -18,13 +18,6 @@ const toggle = (selector, force) => {
   }
 };
 
-$('#filterBtn').onclick = () => toggle('#filters');
-document.addEventListener('click', (event) => {
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  if (target.closest('#filters, #filterBtn')) return;
-  toggle('#filters', false);
-});
 $('#aboutBtn').onclick = () => toggle('#about', true);
 $('#closeAbout').onclick = () => toggle('#about', false);
 $('#about').onclick = (event) => {
@@ -34,125 +27,9 @@ $('#about').onclick = (event) => {
 addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     toggle('#about', false);
-    toggle('#filters', false);
     toggle('#colors', false);
   }
 });
-
-const services = new Set([
-  'Netflix',
-  'Hulu',
-  'Disney+',
-  'Max',
-  'Prime Video',
-  'fuboTV',
-  'Crunchyroll',
-]);
-const active = new Set();
-
-function drawServices() {
-  const serviceList = $('#svcList');
-  serviceList.innerHTML = '';
-
-  services.forEach((service) => {
-    const label = document.createElement('label');
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = active.has(service);
-    checkbox.onchange = () => {
-      if (checkbox.checked) {
-        active.add(service);
-      } else {
-        active.delete(service);
-      }
-      rerun();
-    };
-    label.append(service, checkbox);
-    serviceList.append(label);
-  });
-}
-
-$('#svcOther').onkeydown = (event) => {
-  if (event.key !== 'Enter') return;
-  event.preventDefault();
-
-  const service = event.target.value.trim();
-  if (!service) return;
-
-  services.add(service);
-  active.add(service);
-  event.target.value = '';
-  drawServices();
-  rerun();
-};
-
-$('#clearF').onclick = () => {
-  active.clear();
-  drawServices();
-  rerun();
-};
-
-function getEditDistance(left, right, maxDistance) {
-  if (Math.abs(left.length - right.length) > maxDistance) {
-    return maxDistance + 1;
-  }
-
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    const current = [leftIndex];
-    let rowMinimum = leftIndex;
-
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      const cost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
-      const distance = Math.min(
-        current[rightIndex - 1] + 1,
-        previous[rightIndex] + 1,
-        previous[rightIndex - 1] + cost
-      );
-      current.push(distance);
-      rowMinimum = Math.min(rowMinimum, distance);
-    }
-
-    if (rowMinimum > maxDistance) {
-      return maxDistance + 1;
-    }
-    previous = current;
-  }
-
-  return previous[right.length];
-}
-
-function matchesServiceFilter(serviceName, filter) {
-  const service = String(serviceName ?? '').toLowerCase();
-  const query = String(filter ?? '').trim().toLowerCase();
-  if (!service || !query) return false;
-  if (service.includes(query)) return true;
-  if (query.length < 4) return false;
-
-  const maxDistance = 2;
-  const minWindowLength = Math.max(1, query.length - maxDistance);
-  const maxWindowLength = Math.min(service.length, query.length + maxDistance);
-
-  for (let start = 0; start < service.length; start += 1) {
-    for (
-      let length = minWindowLength;
-      length <= maxWindowLength && start + length <= service.length;
-      length += 1
-    ) {
-      if (
-        getEditDistance(
-          query,
-          service.slice(start, start + length),
-          maxDistance
-        ) <= maxDistance
-      ) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
 
 const escapeHtml = (value) =>
   String(value ?? '').replace(/[&<>\"]/g, (character) => ({
@@ -266,7 +143,8 @@ async function runSearch(query) {
     note = `<p class="note err">The webpage failed to reach the server at ${escapeHtml(getApiBase())}. Showing saved results.</p>`;
   }
 
-  if (active.size) {
+  const activeServices = getActiveServices();
+  if (activeServices.length) {
     const itemDetails = await Promise.all(
       results.map((result) => getItemInformation(result.name).catch(() => null))
     );
@@ -274,12 +152,12 @@ async function runSearch(query) {
       (result, index) =>
         itemDetails[index] &&
         (itemDetails[index].services || []).some((service) =>
-          [...active].some((filter) =>
+          activeServices.some((filter) =>
             matchesServiceFilter(service.serviceName, filter)
           )
         )
     );
-    note += `<p class="note">Showing titles on: ${[...active]
+    note += `<p class="note">Showing titles on: ${activeServices
       .map((service) => `<span class="pill">${escapeHtml(service)}</span>`)
       .join('')}</p>`;
   }
@@ -362,15 +240,7 @@ $('#home').onclick = () => {
 };
 
 initializeCustomization({ clearApiCache });
-drawServices();
+const getActiveServices = initializeFilterMenu(rerun);
 showHome();
 
-try {
-  if (localStorage.getItem(ABOUT_SHOWN_KEY) !== 'true') {
-    localStorage.setItem(ABOUT_SHOWN_KEY, 'true');
-    toggle('#about', true);
-  }
-} catch (error) {
-  console.error('Unable to check whether the About popup was previously shown.', error);
-  toggle('#about', true);
-}
+if (shouldShowAboutPopup()) toggle('#about', true);

@@ -37,12 +37,21 @@
     width: min(100%, 360px);
   }
 
-  #filters,
   #colors {
     right: 12px;
     max-width: calc(100vw - 24px);
-    max-height: calc(100vh - 100px);
     overflow-y: auto;
+  }
+
+  #filters {
+    right: 12px;
+    max-width: calc(100vw - 24px);
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  #colors {
+    max-height: calc(100vh - 100px);
   }
 
   #about {
