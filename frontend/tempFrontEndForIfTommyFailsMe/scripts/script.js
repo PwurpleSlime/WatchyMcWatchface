@@ -19,6 +19,12 @@ const toggle = (selector, force) => {
 };
 
 $('#filterBtn').onclick = () => toggle('#filters');
+document.addEventListener('click', (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (target.closest('#filters, #filterBtn')) return;
+  toggle('#filters', false);
+});
 $('#aboutBtn').onclick = () => toggle('#about', true);
 $('#closeAbout').onclick = () => toggle('#about', false);
 $('#about').onclick = (event) => {
