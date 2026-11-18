@@ -54,10 +54,17 @@
     <div class="drop" id="filters">
       <h3>My subscriptions</h3>
       <div id="svcList"></div>
-      <label>
-        Other
-        <input type="text" id="svcOther" placeholder="Add service, press Enter" />
-      </label>
+      <div class="filter-other">
+        <label for="svcOther">Other service</label>
+        <input
+          type="text"
+          id="svcOther"
+          aria-describedby="svcOtherHelp"
+        />
+        <p id="svcOtherHelp" class="filter-hint">
+          Type a service name and press Enter to add it.
+        </p>
+      </div>
       <button id="clearF">Clear</button>
     </div>
 

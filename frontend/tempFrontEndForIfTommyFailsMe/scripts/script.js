@@ -86,6 +86,68 @@ $('#clearF').onclick = () => {
   rerun();
 };
 
+function getEditDistance(left, right, maxDistance) {
+  if (Math.abs(left.length - right.length) > maxDistance) {
+    return maxDistance + 1;
+  }
+
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    let rowMinimum = leftIndex;
+
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const cost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      const distance = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + cost
+      );
+      current.push(distance);
+      rowMinimum = Math.min(rowMinimum, distance);
+    }
+
+    if (rowMinimum > maxDistance) {
+      return maxDistance + 1;
+    }
+    previous = current;
+  }
+
+  return previous[right.length];
+}
+
+function matchesServiceFilter(serviceName, filter) {
+  const service = String(serviceName ?? '').toLowerCase();
+  const query = String(filter ?? '').trim().toLowerCase();
+  if (!service || !query) return false;
+  if (service.includes(query)) return true;
+  if (query.length < 4) return false;
+
+  const maxDistance = 2;
+  const minWindowLength = Math.max(1, query.length - maxDistance);
+  const maxWindowLength = Math.min(service.length, query.length + maxDistance);
+
+  for (let start = 0; start < service.length; start += 1) {
+    for (
+      let length = minWindowLength;
+      length <= maxWindowLength && start + length <= service.length;
+      length += 1
+    ) {
+      if (
+        getEditDistance(
+          query,
+          service.slice(start, start + length),
+          maxDistance
+        ) <= maxDistance
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 const escapeHtml = (value) =>
   String(value ?? '').replace(/[&<>\"]/g, (character) => ({
     '&': '&amp;',
@@ -205,7 +267,11 @@ async function runSearch(query) {
     results = results.filter(
       (result, index) =>
         itemDetails[index] &&
-        (itemDetails[index].services || []).some((service) => active.has(service.serviceName))
+        (itemDetails[index].services || []).some((service) =>
+          [...active].some((filter) =>
+            matchesServiceFilter(service.serviceName, filter)
+          )
+        )
     );
     note += `<p class="note">Showing titles on: ${[...active]
       .map((service) => `<span class="pill">${escapeHtml(service)}</span>`)

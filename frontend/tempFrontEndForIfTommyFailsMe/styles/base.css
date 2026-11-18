@@ -307,6 +307,28 @@ h2 {
   font: inherit;
 }
 
+#filters .filter-other {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+#filters .filter-other label {
+  display: block;
+  margin: 0;
+  font-weight: 600;
+}
+
+#filters #svcOther {
+  min-width: 0;
+}
+
+#filters .filter-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .drop input[type='color'] {
   width: 44px;
   height: 28px;
