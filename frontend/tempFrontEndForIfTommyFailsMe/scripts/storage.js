@@ -1,6 +1,7 @@
 const CACHE_PREFIX = 'watchymcwatchface:api-cache:';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 const ABOUT_SHOWN_KEY = 'watchymcwatchface:about-shown';
+const FILTER_PREFERENCES_KEY = 'watchymcwatchface:filter-preferences';
 
 function showCacheStatus(message) {
   document.querySelector('#cacheStatus').textContent = message;
@@ -66,5 +67,45 @@ export function shouldShowAboutPopup() {
   } catch (error) {
     console.error('Unable to check whether the About popup was previously shown.', error);
     return true;
+  }
+}
+
+export function loadFilterPreferences() {
+  try {
+    const stored = localStorage.getItem(FILTER_PREFERENCES_KEY);
+    if (stored === null) return { customServices: [], activeServices: [] };
+
+    const preferences = JSON.parse(stored);
+    if (!preferences || typeof preferences !== 'object') {
+      throw new TypeError('Saved filter preferences are invalid.');
+    }
+
+    const getNames = (value) =>
+      Array.isArray(value)
+        ? value.filter((name) => typeof name === 'string' && name.trim())
+        : [];
+    return {
+      customServices: getNames(preferences.customServices),
+      activeServices: getNames(preferences.activeServices),
+    };
+  } catch (error) {
+    console.error('Unable to load saved filter preferences.', error);
+    const status = document.querySelector('#filterStatus');
+    status.textContent = 'Saved filters could not be loaded.';
+    return { customServices: [], activeServices: [] };
+  }
+}
+
+export function saveFilterPreferences(customServices, activeServices) {
+  try {
+    localStorage.setItem(
+      FILTER_PREFERENCES_KEY,
+      JSON.stringify({ customServices, activeServices })
+    );
+    document.querySelector('#filterStatus').textContent = '';
+  } catch (error) {
+    console.error('Unable to save filter preferences.', error);
+    document.querySelector('#filterStatus').textContent =
+      'Filter changes could not be saved.';
   }
 }

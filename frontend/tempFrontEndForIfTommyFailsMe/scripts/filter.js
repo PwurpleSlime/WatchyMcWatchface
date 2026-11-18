@@ -1,6 +1,8 @@
+import { loadFilterPreferences, saveFilterPreferences } from './storage.js';
+
 const $ = (selector) => document.querySelector(selector);
 
-const services = new Set([
+const defaultServices = [
   'Netflix',
   'Hulu',
   'Disney+',
@@ -8,8 +10,7 @@ const services = new Set([
   'Prime Video',
   'fuboTV',
   'Crunchyroll',
-]);
-const active = new Set();
+];
 
 function getEditDistance(left, right, maxDistance) {
   if (Math.abs(left.length - right.length) > maxDistance) {
@@ -74,11 +75,26 @@ export function matchesServiceFilter(serviceName, filter) {
 }
 
 export function initializeFilterMenu(onChange) {
+  const preferences = loadFilterPreferences();
+  const customServices = new Set(
+    preferences.customServices.filter((service) => !defaultServices.includes(service))
+  );
+  const services = new Set([...defaultServices, ...customServices]);
+  const active = new Set(
+    preferences.activeServices.filter((service) => services.has(service))
+  );
+
+  const savePreferences = () => {
+    saveFilterPreferences([...customServices], [...active]);
+  };
+
   const drawServices = () => {
     const serviceList = $('#svcList');
     serviceList.innerHTML = '';
 
     services.forEach((service) => {
+      const option = document.createElement('div');
+      option.className = 'service-option';
       const label = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -89,10 +105,31 @@ export function initializeFilterMenu(onChange) {
         } else {
           active.delete(service);
         }
+        savePreferences();
         onChange();
       };
       label.append(service, checkbox);
-      serviceList.append(label);
+      option.append(label);
+
+      if (customServices.has(service)) {
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'service-delete';
+        deleteButton.textContent = '×';
+        deleteButton.setAttribute('aria-label', `Delete ${service}`);
+        deleteButton.onclick = (event) => {
+          event.stopPropagation();
+          services.delete(service);
+          customServices.delete(service);
+          active.delete(service);
+          savePreferences();
+          drawServices();
+          onChange();
+        };
+        option.append(deleteButton);
+      }
+
+      serviceList.append(option);
     });
   };
 
@@ -117,13 +154,16 @@ export function initializeFilterMenu(onChange) {
     if (!service) return;
 
     services.add(service);
+    if (!defaultServices.includes(service)) customServices.add(service);
     active.add(service);
     event.target.value = '';
+    savePreferences();
     drawServices();
     onChange();
   };
   $('#clearF').onclick = () => {
     active.clear();
+    savePreferences();
     drawServices();
     onChange();
   };
