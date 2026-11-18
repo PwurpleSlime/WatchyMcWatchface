@@ -32,22 +32,57 @@ type HomeCategory = {
   items: Movie[];
 };
 
+function normalizeService(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const service = value as Record<string, unknown>;
+  const name = service.name ?? service.provider ?? service.service;
+  return typeof name === "string" ? name.trim() : "";
+}
+
 function normalizeMovie(
   item: any,
   genre = "",
   index = 0
 ): Movie {
+  const image =
+    item.imgURL ??
+    item.posterUrl ??
+    item.poster_url ??
+    item.poster ??
+    item.imageUrl ??
+    item.image ??
+    item.thumbnail;
+  const serviceData =
+    item.streamingServices ??
+    item.streaming_services ??
+    item.streamingLinks ??
+    item.streaming_links ??
+    item.providers ??
+    item.services;
+
   return {
     id: String(
       item.id ?? item._id ?? `${genre}-${item.name ?? "movie"}-${index}`
     ),
     name: String(item.name ?? item.title ?? ""),
-    imgURL: normalizeImageURL(item.imgURL),
+    imgURL: normalizeImageURL(image),
     genre: String(item.genre ?? genre),
-    services: Array.isArray(item.services)
-      ? item.services.map(String)
-      : typeof item.services === "string"
-        ? item.services.split(",").map((service: string) => service.trim())
+    services: Array.isArray(serviceData)
+      ? serviceData
+          .map(normalizeService)
+          .filter(Boolean)
+      : typeof serviceData === "string"
+        ? serviceData
+            .split(",")
+            .map((service: string) => service.trim())
+            .filter(Boolean)
         : [],
   };
 }
@@ -396,13 +431,25 @@ export default function Home() {
           onSubmit={(event) => event.preventDefault()}
         >
           <input
-            type="search"
+            type="text"
             className={styles.searchInput}
             placeholder="Search movies and TV shows..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             aria-label="Search movies and TV shows"
           />
+
+          {search && (
+            <button
+              type="button"
+              className={styles.clearSearchButton}
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              title="Clear search"
+            >
+              ×
+            </button>
+          )}
 
           <button type="submit" className={styles.searchButton}>
             Search
