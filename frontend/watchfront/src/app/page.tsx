@@ -17,6 +17,8 @@ const streamingServices = [
   "Peacock",
   "Paramount+",
   "Apple TV+",
+  "fuboTV",
+  "Crunchyroll",
 ];
 
 type Movie = {
@@ -42,8 +44,21 @@ function normalizeService(value: unknown): string {
   }
 
   const service = value as Record<string, unknown>;
-  const name = service.name ?? service.provider ?? service.service;
+  const name =
+    service.serviceName ??
+    service.name ??
+    service.provider ??
+    service.service;
   return typeof name === "string" ? name.trim() : "";
+}
+
+function normalizeServiceName(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    "amazon prime video": "prime video",
+    "hbo max": "max",
+  };
+  return aliases[normalized] ?? normalized;
 }
 
 function normalizeMovie(
@@ -100,7 +115,10 @@ function normalizeHomeCategories(data: any): HomeCategory[] {
         Array.isArray(category.items)
     )
     .map((category: any, categoryIndex: number) => ({
-      genre: category.genre,
+      genre:
+        category.genre.trim().toLowerCase() === "staff"
+          ? "Staff Recommendation"
+          : category.genre,
       items: category.items
         .filter((item: any) => item && typeof item === "object")
         .map((item: any, index: number) =>
@@ -142,6 +160,11 @@ export default function Home() {
 
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [appliedServices, setAppliedServices] = useState<string[]>([]);
+  const [movieServices, setMovieServices] = useState<
+    Record<string, string[]>
+  >({});
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [serviceError, setServiceError] = useState("");
 
   const [filterOpen, setFilterOpen] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
@@ -330,6 +353,8 @@ export default function Home() {
   function clearFilters() {
     setSelectedServices([]);
     setAppliedServices([]);
+    setServiceError("");
+    setLoadingServices(false);
   }
 
   function matchesServices(movie: Movie) {
@@ -338,8 +363,12 @@ export default function Home() {
     }
 
     return appliedServices.some((selected) =>
-      movie.services.some(
-        (service) => service.toLowerCase() === selected.toLowerCase()
+      (movie.services.length > 0
+        ? movie.services
+        : movieServices[movie.name.toLowerCase()] ?? []
+      ).some(
+        (service) =>
+          normalizeServiceName(service) === normalizeServiceName(selected)
       )
     );
   }
@@ -395,9 +424,11 @@ export default function Home() {
           <p>
             {loadingHome
               ? "Loading movies..."
-              : appliedServices.length > 0
-                ? "No movies in this category match your selected services."
-                : `No movies found in ${category.genre}.`}
+              : loadingServices && appliedServices.length > 0
+                ? "Checking streaming availability..."
+                : appliedServices.length > 0
+                  ? "No movies in this category match your selected services."
+                  : `No movies found in ${category.genre}.`}
           </p>
         )}
       </section>
@@ -414,10 +445,116 @@ export default function Home() {
     (category) => category.genre.trim().toLowerCase() === "comedy"
   );
 
+  const staffRecommendationCategory = homeCategories.find(
+    (category) =>
+      category.genre.trim().toLowerCase() === "staff recommendation"
+  );
+
   const displayedHomeCategories = [
     actionCategory,
     comedyCategory,
+    staffRecommendationCategory,
   ].filter((category): category is HomeCategory => Boolean(category));
+
+  useEffect(() => {
+    if (appliedServices.length === 0) {
+      return;
+    }
+
+    const movies = hasSearch
+      ? searchResults
+      : homeCategories
+          .filter((category) =>
+            ["action", "comedy", "staff", "staff recommendation"].includes(
+              category.genre.trim().toLowerCase()
+            )
+          )
+          .flatMap((category) => category.items);
+    const uniqueMovies = Array.from(
+      new Map(
+        movies.map((movie) => [movie.name.toLowerCase(), movie])
+      ).values()
+    );
+    const moviesNeedingServices = uniqueMovies.filter(
+      (movie) =>
+        movie.services.length === 0 &&
+        movieServices[movie.name.toLowerCase()] === undefined
+    );
+
+    if (moviesNeedingServices.length === 0) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadMovieServices() {
+      setLoadingServices(true);
+      setServiceError("");
+
+      try {
+        const services = await Promise.all(
+          moviesNeedingServices.map(async (movie) => {
+            const response = await fetch(
+              `${API_BASE_URL}/getItemInformation?name=${encodeURIComponent(
+                movie.name
+              )}`,
+              {
+                signal: controller.signal,
+                cache: "no-store",
+              }
+            );
+            const data = await response.json();
+
+            if (!response.ok) {
+              throw new Error(
+                data?.message ??
+                  `Could not load streaming availability for ${movie.name}.`
+              );
+            }
+
+            const [details] = normalizeSearchResults([data]);
+            if (!details) {
+              throw new Error(
+                `Could not load streaming availability for ${movie.name}.`
+              );
+            }
+
+            return [movie.name.toLowerCase(), details.services] as const;
+          })
+        );
+
+        setMovieServices((current) => ({
+          ...current,
+          ...Object.fromEntries(services),
+        }));
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+
+        console.error("Movie streaming availability lookup failed:", error);
+        setServiceError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load streaming availability."
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingServices(false);
+        }
+      }
+    }
+
+    loadMovieServices();
+
+    return () => controller.abort();
+  }, [
+    appliedServices,
+    homeCategories,
+    hasSearch,
+    movieServices,
+    searchResults,
+  ]);
 
   return (
     <main className={styles.page}>
@@ -514,6 +651,12 @@ export default function Home() {
           </p>
         )}
 
+        {serviceError && (
+          <p className={styles.searchMessage} role="alert">
+            {serviceError}
+          </p>
+        )}
+
         {hasSearch ? (
           <section className={styles.category}>
             <h2>Search Results</h2>
@@ -524,11 +667,20 @@ export default function Home() {
               </p>
             )}
 
+            {!loadingSearch &&
+              loadingServices &&
+              appliedServices.length > 0 && (
+                <p className={styles.searchMessage}>
+                  Checking streaming availability...
+                </p>
+              )}
+
             {!loadingSearch && searchError && (
               <p className={styles.searchMessage}>{searchError}</p>
             )}
 
             {!loadingSearch &&
+              !loadingServices &&
               !searchError &&
               visibleSearchResults.length === 0 && (
                 <p className={styles.searchMessage}>

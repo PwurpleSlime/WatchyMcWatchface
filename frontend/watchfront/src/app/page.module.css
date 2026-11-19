@@ -13,7 +13,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 12px;
   width: 100%;
   box-sizing: border-box;
   padding: 20px 32px;
@@ -80,7 +80,7 @@
 .filterPopup {
   position: absolute;
   top: calc(100% + 8px);
-  left: 0;
+  right: 0;
   z-index: 100;
   width: 260px;
   max-width: calc(100vw - 32px);
@@ -442,7 +442,7 @@
 /* Tablet layout */
 @media (max-width: 900px) {
   .header {
-    gap: 16px;
+    gap: 12px;
     padding: 18px 20px;
   }
 
@@ -624,7 +624,6 @@
   }
 
   .filterPopup {
-    left: 0;
     width: 235px;
   }
 
