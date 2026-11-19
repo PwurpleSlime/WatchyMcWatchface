@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { normalizeImageURL } from "../lib/image-url";
 import styles from "./page.module.css";
@@ -16,7 +16,7 @@ const streamingServices = [
   "Amazon Prime Video",
   "Peacock",
   "Paramount+",
-  "Apple TV+",
+  "Apple TV",
   "fuboTV",
   "Crunchyroll",
 ];
@@ -56,6 +56,8 @@ function normalizeServiceName(value: string): string {
   const normalized = value.trim().toLowerCase();
   const aliases: Record<string, string> = {
     "amazon prime video": "prime video",
+    "apple tv store": "apple tv",
+    "apple tv+": "apple tv",
     "hbo max": "max",
   };
   return aliases[normalized] ?? normalized;
@@ -155,8 +157,12 @@ function normalizeSearchResults(data: any): Movie[] {
 
 export default function Home() {
   const [search, setSearch] = useState("");
+  const [searchSubmitVersion, setSearchSubmitVersion] = useState(0);
   const [searchResults, setSearchResults] = useState<Movie[]>([]);
   const [homeCategories, setHomeCategories] = useState<HomeCategory[]>([]);
+  const [failedPosterIds, setFailedPosterIds] = useState<Set<string>>(
+    () => new Set()
+  );
 
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [appliedServices, setAppliedServices] = useState<string[]>([]);
@@ -167,6 +173,7 @@ export default function Home() {
   const [serviceError, setServiceError] = useState("");
 
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
 
   const [loadingHome, setLoadingHome] = useState(true);
@@ -176,7 +183,10 @@ export default function Home() {
   const [searchError, setSearchError] = useState("");
 
   const query = search.trim();
-  const hasSearch = query.length >= 3;
+  const requestQuery =
+    query.toLowerCase() === "et" ? "E.T." : query;
+  const hasSearch = query.length >= 3 || query.toLowerCase() === "et";
+  const handledSearchSubmitVersion = useRef(0);
 
   // Load Action and Comedy categories from the backend.
   useEffect(() => {
@@ -251,6 +261,21 @@ export default function Home() {
     }
   }, []);
 
+  useEffect(() => {
+    function closeFilterOnOutsideClick(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        !filterRef.current?.contains(event.target)
+      ) {
+        setFilterOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeFilterOnOutsideClick);
+    return () =>
+      document.removeEventListener("pointerdown", closeFilterOnOutsideClick);
+  }, []);
+
   function closeWelcomePopup() {
     setWelcomeOpen(false);
 
@@ -271,6 +296,8 @@ export default function Home() {
     }
 
     const controller = new AbortController();
+    const submitted = searchSubmitVersion > handledSearchSubmitVersion.current;
+    handledSearchSubmitVersion.current = searchSubmitVersion;
 
     const timeout = setTimeout(async () => {
       setLoadingSearch(true);
@@ -279,7 +306,7 @@ export default function Home() {
       try {
         const url =
           `${API_BASE_URL}/searchForItem/?name=` +
-          encodeURIComponent(query);
+          encodeURIComponent(requestQuery);
 
         console.log("Searching API:", url);
 
@@ -329,13 +356,13 @@ export default function Home() {
           setLoadingSearch(false);
         }
       }
-    }, 300);
+    }, submitted ? 0 : 300);
 
     return () => {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [query, hasSearch]);
+  }, [hasSearch, query, requestQuery, searchSubmitVersion]);
 
   function toggleService(service: string) {
     setSelectedServices((current) =>
@@ -375,6 +402,8 @@ export default function Home() {
 
   // Render posters directly from the online imgURL field.
   function renderMovie(movie: Movie) {
+    const posterFailed = failedPosterIds.has(movie.id);
+
     return (
       <div className={styles.movieItem} key={movie.id}>
         <Link
@@ -384,7 +413,7 @@ export default function Home() {
           className={styles.movieLink}
           title={movie.name}
         >
-          {movie.imgURL ? (
+          {movie.imgURL && !posterFailed ? (
             <img
               src={movie.imgURL}
               alt={`${movie.name} poster`}
@@ -395,11 +424,40 @@ export default function Home() {
                   `Could not load image for "${movie.name}":`,
                   movie.imgURL
                 );
+                setFailedPosterIds((current) => {
+                  if (current.has(movie.id)) {
+                    return current;
+                  }
+
+                  const failed = new Set(current);
+                  failed.add(movie.id);
+                  return failed;
+                });
               }}
             />
           ) : (
-            <div className={styles.moviePoster}>
-              Image unavailable
+            <div
+              className={styles.moviePosterFallback}
+              role="img"
+              aria-label={`${movie.name} poster unavailable`}
+            >
+              <svg
+                className={styles.posterFallbackIcon}
+                viewBox="0 0 48 48"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="7" y="7" width="34" height="34" rx="4" />
+                <path d="M15 7v34m18-34v34M7 17h8m18 0h8M7 31h8m18 0h8" />
+              </svg>
+              <span className={styles.posterFallbackTitle}>{movie.name}</span>
+              <span className={styles.posterFallbackLabel}>
+                Poster unavailable
+              </span>
             </div>
           )}
 
@@ -451,9 +509,9 @@ export default function Home() {
   );
 
   const displayedHomeCategories = [
+    staffRecommendationCategory,
     actionCategory,
     comedyCategory,
-    staffRecommendationCategory,
   ].filter((category): category is HomeCategory => Boolean(category));
 
   useEffect(() => {
@@ -565,7 +623,10 @@ export default function Home() {
 
         <form
           className={styles.searchForm}
-          onSubmit={(event) => event.preventDefault()}
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSearchSubmitVersion((version) => version + 1);
+          }}
         >
           <input
             type="text"
@@ -593,7 +654,7 @@ export default function Home() {
           </button>
         </form>
 
-        <div className={styles.filter}>
+        <div className={styles.filter} ref={filterRef}>
           <button
             type="button"
             className={styles.filterButton}
@@ -739,7 +800,7 @@ export default function Home() {
 
             <div className={styles.popupLeft}>
               <h2 id="welcome-title">
-                Welcome to WatchyMcWatchFace!
+                Welcome to WatchyMcWatchFace
               </h2>
 
               <div className={styles.popupLeftSection}>
