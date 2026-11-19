@@ -789,6 +789,10 @@ export default function Home() {
             aria-modal="true"
             aria-labelledby="welcome-title"
           >
+            <h2 id="welcome-title" className={styles.welcomeTitle}>
+              Welcome to WatchyMcWatchFace
+            </h2>
+
             <button
               type="button"
               className={styles.closePopup}
@@ -799,10 +803,6 @@ export default function Home() {
             </button>
 
             <div className={styles.popupLeft}>
-              <h2 id="welcome-title">
-                Welcome to WatchyMcWatchFace
-              </h2>
-
               <div className={styles.popupLeftSection}>
                 <h3>Who Are We</h3>
                 <p>
@@ -838,14 +838,6 @@ export default function Home() {
                   subscriptions.
                 </p>
               </div>
-
-              <button
-                type="button"
-                className={styles.applyFilter}
-                onClick={closeWelcomePopup}
-              >
-                Get Started
-              </button>
             </div>
           </div>
         </div>
