@@ -41,7 +41,8 @@
 }
 
 .logo {
-  width: 250px;
+  width: fit-content;
+  max-width: calc(100% - 64px);
   padding: 10px 15px;
   background-color: #166088;
   color: white;
@@ -55,6 +56,7 @@
 .logo h1 {
   margin: 0;
   font-size: 24px;
+  overflow-wrap: anywhere;
 }
 
 .logoLink {
@@ -173,7 +175,7 @@
 
   .logo {
     width: auto;
-    max-width: 100%;
+    max-width: calc(100% - 56px);
   }
 
   .logo h1 {
@@ -212,6 +214,10 @@
 
   .logo h1 {
     font-size: 18px;
+  }
+
+  .logo {
+    max-width: calc(100% - 44px);
   }
 
   .header {
